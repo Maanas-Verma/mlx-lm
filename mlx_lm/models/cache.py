@@ -112,9 +112,11 @@ def trim_prompt_cache(cache: List[Any], num_tokens: int) -> List[Any]:
 def create_attention_mask(
     N: int, offset: int, return_array: bool, window_size: Optional[int]
 ):
-    if N == 1:
+    if window_size is not None:
+        return create_causal_mask(N, offset, window_size=window_size)
+    elif N == 1:
         return None
-    if return_array:
+    elif return_array:
         return create_causal_mask(N, offset, window_size=window_size)
     else:
         return "causal"
@@ -561,10 +563,16 @@ class RotatingKVCache(_BaseCache):
 
 
 class ArraysCache(_BaseCache):
+    def __new__(cls, *args, **kwargs):
+        instance = super().__new__(cls)
+        instance.left_padding = None
+        instance.lengths = None
+        return instance
+
     def __init__(self, size, left_padding: Optional[List[int]] = None):
         self.cache = [None] * size
-        self.left_padding = mx.array(left_padding) if left_padding else None
-        self.lengths = None
+        if left_padding:
+            self.left_padding = mx.array(left_padding)
 
     def __setitem__(self, idx, value):
         self.cache[idx] = value
@@ -638,11 +646,6 @@ class ArraysCache(_BaseCache):
 
     def empty(self):
         return self.cache[0] is None
-
-
-class MambaCache(ArraysCache):
-    def __init__(self, left_padding: Optional[List[int]] = None):
-        super().__init__(size=2, left_padding=left_padding)
 
 
 class ChunkedKVCache(_BaseCache):
